@@ -2,6 +2,8 @@
 
 个人使用的本地记账 PWA。收入、支出、分类、账户和备注都保存在浏览器 IndexedDB，不接入银行，不上传账单。
 
+正式网址：https://zyr123-star.github.io/duoduo-wallet/
+
 ## 使用
 
 双击 `start-wallet.cmd`，浏览器会打开 `http://127.0.0.1:4180/`。
