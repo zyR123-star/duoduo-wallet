@@ -36,6 +36,7 @@ async function main() {
   try {
     await page.goto(base, { waitUntil: "networkidle" });
     assert(await page.locator(".brand").isVisible(), "首页品牌区未显示");
+    assert((await text(page, ".brand")).includes("多多钱包"), "应用名称没有更新");
     assert(await text(page, "#monthExpense") === "¥0.00", "初始支出不是 0");
     await page.screenshot({ path: path.join(shots, "home-light.png"), fullPage: true });
 
@@ -49,11 +50,13 @@ async function main() {
     await page.click(".save-button");
     await page.waitForFunction(() => document.querySelector("#sheetLayer").hidden);
     assert(await text(page, "#monthExpense") === "¥25.80", "支出保存后金额不正确");
+    assert((await text(page, "#recentList")).includes("仅自己"), "默认私密标记未显示");
 
     await page.click("#headerAddButton");
     await page.click('[data-type="income"]');
     await page.fill("#amountInput", "1000");
     await page.click('[data-category="inc-allowance"]');
+    await page.click('[data-visibility="partner"]');
     await page.fill("#dateInput", "2026-10-17");
     await page.fill("#noteInput", "生活费");
     await page.click(".save-button");
@@ -79,7 +82,8 @@ async function main() {
     await page.screenshot({ path: path.join(shots, "stats-light.png"), fullPage: true });
 
     await page.click('.tab[data-view="settings"]');
-    assert(await text(page, "#recordSummary") === "2 笔账单", "设置页账单数量不正确");
+    assert(await text(page, "#recordSummary") === "2 笔可见账单", "设置页账单数量不正确");
+    assert((await text(page, "#cloudPanel")).includes("连接两个人"), "共享账本配置入口未显示");
 
     const [download] = await Promise.all([
       page.waitForEvent("download"),
@@ -98,12 +102,12 @@ async function main() {
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify({
         app: "duoduo-wallet",
-        schemaVersion: 1,
+        schemaVersion: 2,
         transactions: [backup.transactions[0]]
       }))
     });
     await page.waitForFunction(() => document.querySelector("#recordSummary").textContent.includes("1 笔"));
-    assert(await text(page, "#recordSummary") === "1 笔账单", "备份恢复没有替换账单");
+    assert(await text(page, "#recordSummary") === "1 笔可见账单", "备份恢复没有替换账单");
 
     await page.waitForFunction(() => navigator.serviceWorker?.ready.then(() => true));
     const manifestStatus = await page.evaluate(async () => (await fetch("./manifest.webmanifest")).status);

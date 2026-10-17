@@ -4,7 +4,8 @@
   const DB_NAME = "duoduo-wallet";
   const DB_VERSION = 1;
   const STORE = "transactions";
-  const APP_VERSION = 1;
+  const APP_VERSION = 2;
+  const CLOUD_CACHE_KEY = "duoduo-visible-transactions-v1";
 
   const EXPENSE_CATEGORIES = [
     { id: "exp-food", name: "餐饮", mark: "餐", color: "#ff8fba", soft: "#fff0f6", ink: "#b75c83" },
@@ -41,14 +42,25 @@
     filter: "all",
     search: "",
     transactions: [],
+    mode: "local",
+    cloudSession: null,
+    profile: null,
+    partner: null,
+    cloudOffline: false,
+    cloudBusy: false,
+    cloudMessage: "",
+    cloudMessageType: "",
     editingId: null,
+    readOnly: false,
     draftType: "expense",
     draftCategory: EXPENSE_CATEGORIES[0].id,
-    draftAccount: "微信"
+    draftAccount: "微信",
+    draftVisibility: "private"
   };
 
   let db;
   let toastTimer;
+  let syncTimer;
 
   const elements = {};
 
@@ -63,14 +75,24 @@
     try {
       db = await openDatabase();
       state.transactions = await dbGetAll();
-      renderAll();
       requestPersistentStorage();
     } catch (error) {
       console.error(error);
       showToast("账本暂时无法打开，请刷新重试");
-      renderAll();
     }
 
+    if (window.JiajiaCloud?.configured()) {
+      try {
+        state.cloudSession = await window.JiajiaCloud.restoreSession();
+        if (state.cloudSession) await connectCloud({ silent: true });
+      } catch (error) {
+        console.warn("Cloud session restore failed", error);
+        state.cloudMessage = "登录状态已失效，请重新登录";
+        state.cloudMessageType = "error";
+      }
+    }
+
+    renderAll();
     registerServiceWorker();
   }
 
@@ -83,7 +105,9 @@
       "importButton", "importInput", "exportCsvButton", "headerAddButton",
       "tabAddButton", "sheetLayer", "sheetBackdrop", "sheetClose", "sheetEyebrow",
       "sheetTitle", "transactionForm", "typeSwitch", "amountInput", "categoryGrid",
-      "accountChips", "dateInput", "noteInput", "deleteButton", "toast"
+      "accountChips", "dateInput", "noteInput", "deleteButton", "saveButton", "toast",
+      "cloudPanel", "ledgerModeLabel", "syncModeLabel", "readonlyBanner",
+      "visibilitySection", "visibilitySwitch", "editSheet"
     ].forEach((id) => {
       elements[id] = document.getElementById(id);
     });
@@ -112,6 +136,12 @@
     elements.sheetBackdrop.addEventListener("click", closeSheet);
     elements.transactionForm.addEventListener("submit", saveTransaction);
     elements.deleteButton.addEventListener("click", deleteCurrentTransaction);
+    elements.visibilitySwitch.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-visibility]");
+      if (!button || state.readOnly) return;
+      state.draftVisibility = button.dataset.visibility;
+      renderVisibilityChoices();
+    });
 
     elements.typeSwitch.addEventListener("click", (event) => {
       const button = event.target.closest("[data-type]");
@@ -161,14 +191,131 @@
     elements.exportCsvButton.addEventListener("click", exportCsv);
     elements.importButton.addEventListener("click", () => elements.importInput.click());
     elements.importInput.addEventListener("change", importBackup);
+    elements.cloudPanel.addEventListener("click", handleCloudAction);
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !elements.sheetLayer.hidden) closeSheet();
     });
     window.addEventListener("hashchange", setInitialView);
+    window.addEventListener("focus", () => {
+      if (state.mode === "cloud") {
+        refreshCloudProfile(false);
+        refreshCloudTransactions(false);
+      }
+    });
     window.addEventListener("beforeunload", () => {
+      window.clearInterval(syncTimer);
       if (db) db.close();
     });
+  }
+
+  async function connectCloud({ silent = false } = {}) {
+    if (!window.JiajiaCloud?.configured()) return;
+    state.cloudSession = await window.JiajiaCloud.restoreSession();
+    if (!state.cloudSession) return;
+    const { own, partner } = await window.JiajiaCloud.getProfile();
+    if (!own) throw new Error("没有找到账户档案，请先执行 supabase/schema.sql");
+    state.profile = own;
+    state.partner = partner;
+    state.mode = "cloud";
+    state.cloudMessage = "";
+    state.cloudMessageType = "";
+    await refreshCloudTransactions(false);
+    startCloudSync();
+    if (!silent) showToast(partner ? `已连接 ${partner.display_name || "对方"}` : "共享账本已连接");
+    renderAll();
+  }
+
+  async function refreshCloudTransactions(notify = true) {
+    if (state.mode !== "cloud" || !state.cloudSession) return;
+    try {
+      const rows = await window.JiajiaCloud.listTransactions();
+      state.transactions = (rows || []).map(normalizeCloudTransaction);
+      localStorage.setItem(CLOUD_CACHE_KEY, JSON.stringify(state.transactions));
+      state.cloudOffline = false;
+      if (notify) renderAll();
+      else renderSyncedDataViews();
+    } catch (error) {
+      console.warn("Cloud refresh failed", error);
+      state.cloudOffline = true;
+      const cached = readCloudCache();
+      if (cached.length) state.transactions = cached;
+      if (notify) showToast("当前离线，正在显示上次同步的账单");
+      renderSettings();
+    }
+  }
+
+  function startCloudSync() {
+    window.clearInterval(syncTimer);
+    syncTimer = window.setInterval(() => {
+      refreshCloudProfile(false);
+      refreshCloudTransactions(false);
+    }, 15000);
+  }
+
+  async function refreshCloudProfile(notify = true) {
+    if (state.mode !== "cloud" || !state.cloudSession) return;
+    try {
+      const { own, partner } = await window.JiajiaCloud.getProfile();
+      const partnerChanged = state.partner?.id !== partner?.id;
+      if (own) state.profile = own;
+      state.partner = partner;
+      if (notify) renderAll();
+      else if (partnerChanged && state.view === "settings") renderCloudPanel();
+    } catch (error) {
+      console.warn("Cloud profile refresh failed", error);
+    }
+  }
+
+  function renderSyncedDataViews() {
+    renderHome();
+    renderLedger();
+    renderStats();
+    if (state.view === "settings") {
+      elements.ledgerModeLabel.textContent = "共享账本";
+      elements.syncModeLabel.textContent = state.cloudOffline ? "离线缓存" : "自动同步";
+      elements.recordSummary.textContent = `${state.transactions.length} 笔可见账单`;
+      elements.storageSummary.textContent = state.cloudOffline
+        ? "联网后自动刷新；离线时仅浏览缓存"
+        : "私密账单不会进入对方设备";
+    } else {
+      renderSettings();
+    }
+  }
+
+  function normalizeCloudTransaction(row) {
+    return {
+      id: row.id,
+      type: row.type,
+      amount: Number(row.amount),
+      categoryId: row.category_id,
+      account: row.account,
+      date: row.date,
+      note: row.note || "",
+      visibility: row.visibility === "partner" ? "partner" : "private",
+      ownerId: row.owner_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  function readCloudCache() {
+    try {
+      const value = JSON.parse(localStorage.getItem(CLOUD_CACHE_KEY) || "[]");
+      return Array.isArray(value) ? value.map(normalizeCloudTransaction) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function currentUserId() {
+    return state.cloudSession?.user?.id || null;
+  }
+
+  function isOwnTransaction(transaction) {
+    if (!transaction) return true;
+    if (state.mode !== "cloud") return true;
+    return !transaction.ownerId || transaction.ownerId === currentUserId();
   }
 
   function openDatabase() {
@@ -351,8 +498,20 @@
   }
 
   function renderSettings() {
-    elements.recordSummary.textContent = `${state.transactions.length} 笔账单`;
-    updateStorageSummary();
+    const cloud = state.mode === "cloud";
+    elements.ledgerModeLabel.textContent = cloud ? "共享账本" : "本机账本";
+    elements.syncModeLabel.textContent = cloud
+      ? (state.cloudOffline ? "离线缓存" : "自动同步")
+      : "离线可用";
+    elements.recordSummary.textContent = `${state.transactions.length} 笔可见账单`;
+    renderCloudPanel();
+    if (cloud) {
+      elements.storageSummary.textContent = state.cloudOffline
+        ? "联网后自动刷新；离线时仅浏览缓存"
+        : "私密账单不会进入对方设备";
+    } else {
+      updateStorageSummary();
+    }
   }
 
   async function updateStorageSummary() {
@@ -369,6 +528,198 @@
     }
   }
 
+  function renderCloudPanel() {
+    const cloud = window.JiajiaCloud;
+    if (!cloud?.configured()) {
+      elements.cloudPanel.innerHTML = `
+        <div class="cloud-intro">
+          <strong>连接两个人</strong>
+          <span>填入 Supabase 项目地址和 anon key，登录后生成配对码。</span>
+        </div>
+        <div class="cloud-form">
+          <label class="cloud-field"><span>Supabase URL</span><input id="cloudUrlInput" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off"></label>
+          <label class="cloud-field"><span>anon key</span><input id="cloudKeyInput" type="text" placeholder="eyJ..." autocomplete="off"></label>
+          <button class="cloud-button primary" type="button" data-cloud-action="connect">
+            <svg><use href="#i-cloud"></use></svg>连接共享服务
+          </button>
+        </div>
+        ${cloudMessageHtml()}`;
+      return;
+    }
+
+    if (!state.cloudSession) {
+      elements.cloudPanel.innerHTML = `
+        <div class="cloud-status">
+          <span><svg><use href="#i-cloud"></use></svg></span>
+          <span><strong>共享服务已配置</strong><small>${escapeHtml(cloud.getConfig().url)}</small></span>
+        </div>
+        <div class="cloud-form">
+          <label class="cloud-field"><span>昵称</span><input id="cloudNameInput" type="text" maxlength="20" placeholder="多多" autocomplete="nickname"></label>
+          <label class="cloud-field"><span>邮箱</span><input id="cloudEmailInput" type="email" placeholder="name@example.com" autocomplete="email"></label>
+          <label class="cloud-field"><span>密码</span><input id="cloudPasswordInput" type="password" placeholder="至少 6 位" autocomplete="current-password"></label>
+          <div class="cloud-actions">
+            <button class="cloud-button primary" type="button" data-cloud-action="signin" ${state.cloudBusy ? "disabled" : ""}>登录</button>
+            <button class="cloud-button" type="button" data-cloud-action="signup" ${state.cloudBusy ? "disabled" : ""}>注册</button>
+          </div>
+          <button class="cloud-button danger" type="button" data-cloud-action="reset-config">清除服务配置</button>
+        </div>
+        ${cloudMessageHtml()}`;
+      return;
+    }
+
+    const ownName = state.profile?.display_name || "我";
+    const partnerName = state.partner?.display_name || "对方";
+    const partnerBlock = state.partner
+      ? `
+        <div class="partner-strip">
+          <span class="partner-avatar">${escapeHtml(partnerName.slice(0, 1))}</span>
+          <div><strong>${escapeHtml(partnerName)}</strong><span>已配对 · 互相只能查看对方允许的内容</span></div>
+        </div>
+        <button class="cloud-button danger" type="button" data-cloud-action="unpair">解除配对</button>`
+      : `
+        <div class="pair-code">
+          <span>把这组配对码发给她</span>
+          <strong>${escapeHtml(state.profile?.invite_code || "------")}</strong>
+        </div>
+        <button class="cloud-button" type="button" data-cloud-action="copy-code">复制配对码</button>
+        <div class="cloud-form">
+          <label class="cloud-field"><span>如果她已发来配对码</span><input id="pairCodeInput" type="text" maxlength="12" placeholder="输入 6 位配对码" autocomplete="one-time-code"></label>
+          <button class="cloud-button primary" type="button" data-cloud-action="pair" ${state.cloudBusy ? "disabled" : ""}>完成配对</button>
+        </div>`;
+
+    elements.cloudPanel.innerHTML = `
+      <div class="cloud-status${state.cloudOffline ? " is-offline" : ""}">
+        <span><svg><use href="#i-${state.cloudOffline ? "cloud" : "check"}"></use></svg></span>
+        <span>
+          <strong>${escapeHtml(ownName)} · ${state.cloudOffline ? "离线缓存" : "已同步"}</strong>
+          <small>${state.cloudOffline ? "联网后自动刷新" : "每次保存后同步，每 15 秒检查新账单"}</small>
+        </span>
+      </div>
+      ${partnerBlock}
+      <div class="cloud-actions">
+        <button class="cloud-button" type="button" data-cloud-action="refresh">刷新数据</button>
+        <button class="cloud-button" type="button" data-cloud-action="signout"><svg><use href="#i-log-out"></use></svg>退出登录</button>
+      </div>
+      ${cloudMessageHtml()}`;
+  }
+
+  function cloudMessageHtml() {
+    if (!state.cloudMessage) return "";
+    return `<div class="cloud-message${state.cloudMessageType === "error" ? " error" : ""}">${escapeHtml(state.cloudMessage)}</div>`;
+  }
+
+  async function handleCloudAction(event) {
+    const button = event.target.closest("[data-cloud-action]");
+    if (!button || state.cloudBusy) return;
+    const action = button.dataset.cloudAction;
+    const cloud = window.JiajiaCloud;
+    state.cloudMessage = "";
+    state.cloudMessageType = "";
+
+    try {
+      if (action === "connect") {
+        const url = elements.cloudPanel.querySelector("#cloudUrlInput")?.value || "";
+        const key = elements.cloudPanel.querySelector("#cloudKeyInput")?.value || "";
+        cloud.configure(url, key);
+        state.cloudMessage = "共享服务已保存，请登录或注册";
+        renderCloudPanel();
+        showToast("共享服务已连接");
+        return;
+      }
+
+      if (action === "reset-config") {
+        if (!window.confirm("确认清除共享服务配置？云端账单不会被删除，本机登录会退出。")) return;
+        await cloud.signOut().catch(() => {});
+        cloud.clearConfig();
+        await switchToLocalMode();
+        showToast("已切换回本机账本");
+        return;
+      }
+
+      if (action === "signin" || action === "signup") {
+        const email = elements.cloudPanel.querySelector("#cloudEmailInput")?.value.trim() || "";
+        const password = elements.cloudPanel.querySelector("#cloudPasswordInput")?.value || "";
+        const displayName = elements.cloudPanel.querySelector("#cloudNameInput")?.value.trim() || "";
+        if (!email || !password) throw new Error("请填写邮箱和密码");
+        state.cloudBusy = true;
+        renderCloudPanel();
+        if (action === "signup") {
+          const result = await cloud.signUp(email, password, displayName || email.split("@")[0]);
+          if (result.needsConfirmation) {
+            state.cloudMessage = "注册成功，请先打开邮箱完成验证，再回来登录";
+            return;
+          }
+        } else {
+          await cloud.signIn(email, password);
+        }
+        await connectCloud();
+        return;
+      }
+
+      if (action === "pair") {
+        const code = elements.cloudPanel.querySelector("#pairCodeInput")?.value.trim() || "";
+        if (!code) throw new Error("请输入对方的配对码");
+        state.cloudBusy = true;
+        renderCloudPanel();
+        await cloud.claimInvite(code);
+        await connectCloud();
+        showToast("配对完成");
+        return;
+      }
+
+      if (action === "copy-code") {
+        await navigator.clipboard.writeText(state.profile?.invite_code || "");
+        showToast("配对码已复制");
+        return;
+      }
+
+      if (action === "unpair") {
+        if (!window.confirm("确认解除配对？解除后双方都不能再看到对方共享的账单。")) return;
+        state.cloudBusy = true;
+        renderCloudPanel();
+        await cloud.unpair();
+        const { own, partner } = await cloud.getProfile();
+        state.profile = own;
+        state.partner = partner;
+        await refreshCloudTransactions(false);
+        renderAll();
+        showToast("已解除配对");
+        return;
+      }
+
+      if (action === "refresh") {
+        await refreshCloudProfile(false);
+        await refreshCloudTransactions(true);
+        showToast("共享数据已刷新");
+        return;
+      }
+
+      if (action === "signout") {
+        await cloud.signOut();
+        await switchToLocalMode();
+        showToast("已退出共享账本");
+      }
+    } catch (error) {
+      console.error(error);
+      state.cloudMessage = error.message || "操作失败，请稍后重试";
+      state.cloudMessageType = "error";
+    } finally {
+      state.cloudBusy = false;
+      renderAll();
+    }
+  }
+
+  async function switchToLocalMode() {
+    window.clearInterval(syncTimer);
+    state.mode = "local";
+    state.cloudSession = null;
+    state.profile = null;
+    state.partner = null;
+    state.cloudOffline = false;
+    state.transactions = db ? await dbGetAll() : [];
+    renderAll();
+  }
+
   function setView(view) {
     const allowed = ["home", "ledger", "stats", "settings"];
     if (!allowed.includes(view)) view = "home";
@@ -379,6 +730,13 @@
     document.querySelectorAll(".tab").forEach((button) => {
       button.classList.toggle("is-on", button.dataset.view === view);
     });
+    if (view === "settings") {
+      renderSettings();
+      if (state.mode === "cloud") {
+        refreshCloudProfile(false);
+        refreshCloudTransactions(false);
+      }
+    }
     if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
     window.scrollTo({ top: 0, behavior: "auto" });
   }
@@ -389,55 +747,83 @@
 
   function openSheet(type = "expense", transaction = null) {
     state.editingId = transaction ? transaction.id : null;
+    state.readOnly = transaction ? !isOwnTransaction(transaction) : false;
     state.draftType = transaction ? transaction.type : type;
     state.draftCategory = transaction ? transaction.categoryId : CATEGORIES[state.draftType][0].id;
     state.draftAccount = transaction ? transaction.account : "微信";
+    state.draftVisibility = transaction?.visibility || "private";
 
     elements.amountInput.value = transaction ? (transaction.amount / 100).toFixed(2) : "";
     elements.dateInput.value = transaction ? transaction.date : localDateString(new Date());
     elements.noteInput.value = transaction ? transaction.note : "";
-    elements.deleteButton.hidden = !transaction;
+    elements.editSheet.classList.toggle("is-readonly", state.readOnly);
+    elements.readonlyBanner.hidden = !state.readOnly;
+    elements.deleteButton.hidden = !transaction || state.readOnly;
+    elements.saveButton.hidden = state.readOnly;
+    [elements.amountInput, elements.dateInput, elements.noteInput].forEach((input) => {
+      input.disabled = state.readOnly;
+    });
 
     updateSheetCopy();
     renderSheetChoices();
     elements.sheetLayer.hidden = false;
     document.body.style.overflow = "hidden";
-    window.setTimeout(() => elements.amountInput.focus(), 120);
+    if (!state.readOnly) window.setTimeout(() => elements.amountInput.focus(), 120);
   }
 
   function closeSheet() {
     elements.sheetLayer.hidden = true;
     document.body.style.overflow = "";
     elements.transactionForm.reset();
+    elements.editSheet.classList.remove("is-readonly");
+    elements.readonlyBanner.hidden = true;
+    elements.amountInput.disabled = false;
+    elements.dateInput.disabled = false;
+    elements.noteInput.disabled = false;
     state.editingId = null;
+    state.readOnly = false;
   }
 
   function updateSheetCopy() {
     const income = state.draftType === "income";
-    elements.sheetTitle.textContent = state.editingId
+    elements.sheetTitle.textContent = state.readOnly
+      ? "这笔账单只能查看"
+      : state.editingId
       ? "修改这一笔"
       : income ? "今天收到了什么" : "今天花了什么";
-    elements.sheetEyebrow.textContent = state.editingId ? "编辑账单" : "新账单";
+    elements.sheetEyebrow.textContent = state.readOnly
+      ? "对方分享"
+      : state.editingId ? "编辑账单" : "新账单";
     elements.typeSwitch.querySelectorAll("[data-type]").forEach((button) => {
       button.classList.toggle("is-on", button.dataset.type === state.draftType);
+      button.disabled = state.readOnly;
     });
   }
 
   function renderSheetChoices() {
     elements.categoryGrid.innerHTML = CATEGORIES[state.draftType].map((category) => `
       <button class="category-option${category.id === state.draftCategory ? " is-on" : ""}"
-        type="button" data-category="${category.id}">
+        type="button" data-category="${category.id}" ${state.readOnly ? "disabled" : ""}>
         <span class="category-badge" style="background:${category.soft};color:${category.ink}">${category.mark}</span>
         <span>${escapeHtml(category.name)}</span>
       </button>`).join("");
 
     elements.accountChips.innerHTML = ACCOUNTS.map((account) => `
       <button class="account-chip${account === state.draftAccount ? " is-on" : ""}"
-        type="button" data-account="${escapeHtml(account)}">${escapeHtml(account)}</button>`).join("");
+        type="button" data-account="${escapeHtml(account)}" ${state.readOnly ? "disabled" : ""}>${escapeHtml(account)}</button>`).join("");
+    renderVisibilityChoices();
+  }
+
+  function renderVisibilityChoices() {
+    elements.visibilitySwitch.querySelectorAll("[data-visibility]").forEach((button) => {
+      button.classList.toggle("is-on", button.dataset.visibility === state.draftVisibility);
+      button.disabled = state.readOnly;
+    });
   }
 
   async function saveTransaction(event) {
     event.preventDefault();
+    if (state.readOnly) return;
     const amount = Math.round(Number(elements.amountInput.value) * 100);
     const date = elements.dateInput.value;
 
@@ -455,46 +841,59 @@
     const existing = state.transactions.find((item) => item.id === state.editingId);
     const now = new Date().toISOString();
     const transaction = {
-      id: existing ? existing.id : createId(),
+      id: existing ? existing.id : null,
       type: state.draftType,
       amount,
       categoryId: state.draftCategory,
       account: state.draftAccount,
       date,
       note: elements.noteInput.value.trim(),
+      visibility: state.draftVisibility,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now
     };
 
     try {
-      await dbPut(transaction);
-      state.transactions = await dbGetAll();
+      if (state.mode === "cloud") {
+        await window.JiajiaCloud.saveTransaction(transaction);
+        await refreshCloudTransactions(false);
+      } else {
+        transaction.id = transaction.id || createId();
+        await dbPut(transaction);
+        state.transactions = await dbGetAll();
+      }
       const savedMonth = new Date(`${date}T00:00:00`);
       state.month = startOfMonth(savedMonth);
       closeSheet();
       renderAll();
-      showToast(existing ? "账单已更新" : `${state.draftType === "expense" ? "支出" : "收入"}已记下`);
+      const range = state.draftVisibility === "partner" ? "，对方可见" : "，仅自己可见";
+      showToast(existing ? "账单已更新" : `${state.draftType === "expense" ? "支出" : "收入"}已记下${range}`);
     } catch (error) {
       console.error(error);
-      showToast("保存失败，请再试一次");
+      showToast(state.mode === "cloud" ? "保存失败，请检查网络后重试" : "保存失败，请再试一次");
     }
   }
 
   async function deleteCurrentTransaction() {
-    if (!state.editingId) return;
+    if (!state.editingId || state.readOnly) return;
     const item = state.transactions.find((transaction) => transaction.id === state.editingId);
     if (!item) return;
     if (!window.confirm(`确认删除这笔 ${formatCurrency(item.amount)} 的账单吗？`)) return;
 
     try {
-      await dbDelete(item.id);
-      state.transactions = await dbGetAll();
+      if (state.mode === "cloud") {
+        await window.JiajiaCloud.deleteTransaction(item.id);
+        await refreshCloudTransactions(false);
+      } else {
+        await dbDelete(item.id);
+        state.transactions = await dbGetAll();
+      }
       closeSheet();
       renderAll();
       showToast("账单已删除");
     } catch (error) {
       console.error(error);
-      showToast("删除失败，请再试一次");
+      showToast(state.mode === "cloud" ? "删除失败，请检查网络后重试" : "删除失败，请再试一次");
     }
   }
 
@@ -510,6 +909,7 @@
       app: "duoduo-wallet",
       schemaVersion: APP_VERSION,
       exportedAt: new Date().toISOString(),
+      mode: state.mode,
       transactions: state.transactions
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
@@ -518,13 +918,14 @@
   }
 
   function exportCsv() {
-    const header = ["日期", "类型", "金额", "分类", "账户", "备注"];
+    const header = ["日期", "类型", "金额", "分类", "账户", "可见范围", "备注"];
     const rows = sortTransactions(state.transactions).map((item) => [
       item.date,
       item.type === "expense" ? "支出" : "收入",
       (item.amount / 100).toFixed(2),
       getCategory(item.categoryId)?.name || "其他",
       item.account,
+      item.visibility === "partner" ? "对方可见" : "仅自己",
       item.note
     ]);
     const csv = [header, ...rows]
@@ -546,12 +947,22 @@
         throw new Error("not a wallet backup");
       }
       const items = payload.transactions.map(sanitizeTransaction).filter(Boolean);
-      const message = `备份中有 ${items.length} 笔账单。恢复后会替换当前 ${state.transactions.length} 笔，确认继续吗？`;
-      if (!window.confirm(message)) return;
-      await dbReplace(items);
-      state.transactions = await dbGetAll();
+      if (state.mode === "cloud") {
+        const ownItems = items.filter((item) => !item.ownerId || item.ownerId === currentUserId());
+        if (!window.confirm(`备份中有 ${ownItems.length} 笔属于当前账号的账单。将作为新账单导入云端，确认继续吗？`)) return;
+        for (const item of ownItems) {
+          await window.JiajiaCloud.saveTransaction({ ...item, id: null });
+        }
+        await refreshCloudTransactions(false);
+        showToast("云端备份已导入");
+      } else {
+        const message = `备份中有 ${items.length} 笔账单。恢复后会替换当前 ${state.transactions.length} 笔，确认继续吗？`;
+        if (!window.confirm(message)) return;
+        await dbReplace(items.map(({ ownerId, ...item }) => item));
+        state.transactions = await dbGetAll();
+        showToast("备份已恢复");
+      }
       renderAll();
-      showToast("备份已恢复");
     } catch (error) {
       console.error(error);
       showToast("这个备份文件无法识别");
@@ -575,6 +986,8 @@
       account,
       date,
       note: String(item.note || "").slice(0, 80),
+      visibility: item.visibility === "partner" ? "partner" : "private",
+      ownerId: item.ownerId || null,
       createdAt: String(item.createdAt || now),
       updatedAt: String(item.updatedAt || now)
     };
@@ -612,15 +1025,21 @@
   function billRow(item, showDate = false) {
     const category = getCategory(item.categoryId);
     const isIncome = item.type === "income";
+    const isPartnerEntry = state.mode === "cloud" && !isOwnTransaction(item);
     const title = item.note || category?.name || "未分类";
     const metaParts = [category?.name || "未分类", item.account];
     if (showDate) metaParts.unshift(formatBillDate(item.date));
+    const privacy = isPartnerEntry
+      ? `<span class="privacy-badge partner-entry"><svg><use href="#i-users"></use></svg>${escapeHtml(state.partner?.display_name || "对方")}</span>`
+      : item.visibility === "partner"
+        ? `<span class="privacy-badge shared"><svg><use href="#i-users"></use></svg>对方可见</span>`
+        : `<span class="privacy-badge"><svg><use href="#i-lock"></use></svg>仅自己</span>`;
     return `
-      <button class="bill-row" type="button" data-edit="${escapeHtml(item.id)}">
+      <button class="bill-row${isPartnerEntry ? " is-readonly" : ""}" type="button" data-edit="${escapeHtml(item.id)}">
         <span class="category-badge" style="background:${category?.soft || "#f2f0f4"};color:${category?.ink || "#716779"}">${category?.mark || "记"}</span>
         <span class="bill-copy">
           <strong>${escapeHtml(title)}</strong>
-          <span>${escapeHtml(metaParts.join(" · "))}</span>
+          <span class="meta-line"><span>${escapeHtml(metaParts.join(" · "))}</span>${privacy}</span>
         </span>
         <span class="bill-amount${isIncome ? " income" : ""}">${isIncome ? "+" : "-"}${formatCurrency(item.amount)}</span>
       </button>`;
@@ -652,12 +1071,7 @@
       <div class="empty-state">
         <div class="empty-inner">
           <span class="empty-cloud" aria-hidden="true">
-            <svg viewBox="0 0 56 44">
-              <path d="M15 40C7 40 3 34 5 28c1-5 5-8 10-8 2-10 17-15 24-6 8-2 14 4 14 11 0 9-7 15-16 15H15z" fill="#fff" stroke="#5b526b" stroke-width="3.2" stroke-linejoin="round"/>
-              <circle cx="24" cy="29" r="2.4" fill="#5b526b"/>
-              <circle cx="39" cy="29" r="2.4" fill="#5b526b"/>
-              <path d="M27 35c3 3 7 3 10 0" fill="none" stroke="#5b526b" stroke-width="2.4" stroke-linecap="round"/>
-            </svg>
+            <img src="assets/duoduo-mascot.svg" alt="">
           </span>
           <strong>${escapeHtml(title)}</strong>
           <span>${escapeHtml(detail)}</span>

@@ -1,15 +1,18 @@
 /* 改动页面文件后同步提升 CACHE 版本，联网时会优先取新版本。 */
-const CACHE = "duoduo-wallet-v2";
+const CACHE = "duoduo-wallet-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./cloud.js",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./assets/icon-180.png",
   "./assets/icon-192.png",
-  "./assets/icon-512.png"
+  "./assets/icon-512.png",
+  "./assets/duoduo-mascot.svg",
+  "./assets/duoduo-mascot.png"
 ];
 
 self.addEventListener("install", (event) => {

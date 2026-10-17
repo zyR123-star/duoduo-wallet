@@ -1,7 +1,7 @@
 {
   "name": "多多钱包",
   "short_name": "多多钱包",
-  "description": "只属于你的本地记账钱包",
+  "description": "可以与佳嘉记账只读互看的个人记账钱包",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
