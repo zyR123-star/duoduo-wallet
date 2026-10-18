@@ -72,11 +72,28 @@ async function main() {
     }, null, { timeout: 20000 });
     const session = await page.evaluate(() => JSON.parse(localStorage.getItem("duoduo-cloud-session-v1") || "null"));
     if (!session?.accessToken) throw new Error("注册成功后没有保存登录会话");
+    const oldAccessToken = session.accessToken;
+    await page.evaluate(() => {
+      const key = "duoduo-cloud-session-v1";
+      const current = JSON.parse(localStorage.getItem(key));
+      current.expiresAt = Date.now() - 1000;
+      localStorage.setItem(key, JSON.stringify(current));
+    });
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForFunction(() => {
+      const text = document.querySelector("#cloudPanel")?.textContent || "";
+      return text.includes("把这组配对码发给她") && text.includes("线上注册测试");
+    }, null, { timeout: 20000 });
+    const refreshed = await page.evaluate(() => JSON.parse(localStorage.getItem("duoduo-cloud-session-v1") || "null"));
+    if (!refreshed?.accessToken || refreshed.accessToken === oldAccessToken) {
+      throw new Error("过期登录会话没有自动续期");
+    }
     if (errors.length) throw new Error(`浏览器错误：${errors.join(" | ")}`);
     console.log(JSON.stringify({
       ok: true,
       liveRegistration: true,
       immediateLogin: true,
+      expiredSessionRefreshed: true,
       emailConfirmationRequired: false
     }, null, 2));
   } finally {
