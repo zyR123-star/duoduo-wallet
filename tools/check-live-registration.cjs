@@ -50,7 +50,11 @@ async function main() {
     headless: true,
     executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
   });
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true
+  });
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -88,12 +92,22 @@ async function main() {
     if (!refreshed?.accessToken || refreshed.accessToken === oldAccessToken) {
       throw new Error("过期登录会话没有自动续期");
     }
+    await page.waitForTimeout(500);
+    await page.evaluate(() => localStorage.removeItem("duoduo-cloud-session-v1"));
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForFunction(() => {
+      const text = document.querySelector("#cloudPanel")?.textContent || "";
+      return text.includes("把这组配对码发给她") && text.includes("线上注册测试");
+    }, null, { timeout: 20000 });
+    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("duoduo-cloud-session-v1") || "null"));
+    if (!restored?.accessToken) throw new Error("手机端 IndexedDB 备用会话没有恢复登录");
     if (errors.length) throw new Error(`浏览器错误：${errors.join(" | ")}`);
     console.log(JSON.stringify({
       ok: true,
       liveRegistration: true,
       immediateLogin: true,
       expiredSessionRefreshed: true,
+      indexedDbSessionRestored: true,
       emailConfirmationRequired: false
     }, null, 2));
   } finally {
