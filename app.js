@@ -438,7 +438,7 @@
 
   function renderHome() {
     const items = transactionsForMonth(state.month);
-    const summary = summarize(items);
+    const summary = summarize(items.filter(isOwnTransaction));
     elements.monthExpense.textContent = formatCurrency(summary.expense);
     elements.monthIncome.textContent = formatCurrency(summary.income);
     elements.monthBalance.textContent = formatCurrency(summary.balance);
