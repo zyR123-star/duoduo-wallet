@@ -12,6 +12,18 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <script>
+    (() => {
+      try {
+        const preference = localStorage.getItem("duoduo-wallet-theme-v1") || "auto";
+        const now = new Date();
+        const season = now.getMonth() === 9 || (now.getMonth() === 10 && now.getDate() <= 2);
+        document.documentElement.dataset.theme = preference === "halloween" || (preference === "auto" && season) ? "halloween" : "daily";
+      } catch {
+        document.documentElement.dataset.theme = "daily";
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -76,6 +88,19 @@
     <symbol id="i-log-out" viewBox="0 0 24 24">
       <path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
     </symbol>
+    <symbol id="duoduo-ghost" viewBox="0 0 64 64">
+      <path d="M12 34c0-14 8-24 20-24s20 10 20 24v22l-7-5-6 5-7-5-6 5-7-5-7 5z" fill="#fff8ef" stroke="#77506f" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="25" cy="33" r="2.7" fill="#554257"/>
+      <circle cx="39" cy="33" r="2.7" fill="#554257"/>
+      <path d="M27 41c3 2.6 7 2.6 10 0" fill="none" stroke="#554257" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="18" cy="39" r="4" fill="#ffc2d8" opacity=".7"/>
+      <circle cx="46" cy="39" r="4" fill="#ffc2d8" opacity=".7"/>
+    </symbol>
+    <symbol id="duoduo-candy" viewBox="0 0 64 64">
+      <path d="M7 21l15 11L7 43zM57 21L42 32l15 11z" fill="#ff8fba" stroke="#92506e" stroke-width="3" stroke-linejoin="round"/>
+      <ellipse cx="32" cy="32" rx="14" ry="11" fill="#ffd56a" stroke="#9d7731" stroke-width="3"/>
+      <path d="M24 23l16 18M20 29l12-9M32 41l12-9" fill="none" stroke="#fff4c8" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
   </svg>
 
   <div class="app-shell">
@@ -89,6 +114,7 @@
             <path d="M27 35c3 3 7 3 10 0" fill="none" stroke="#5b526b" stroke-width="2.4" stroke-linecap="round"/>
             <path d="M46 7c2-3 6-2 6 1 0 4-6 7-6 7s-6-3-6-7c0-3 4-4 6-1z" fill="#ff8fba"/>
           </svg>
+          <span class="brand-hat-band"></span>
         </span>
         <div>
           <strong>多多钱包</strong>
@@ -136,6 +162,10 @@
             <path d="M29 80C13 80 5 68 9 56c2-10 10-16 21-16 3-19 33-28 47-11 16-4 29 8 29 22 0 17-14 29-33 29H29z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>
             <path d="M45 59c4 0 7 3 7 7M73 58c4 0 7 3 7 7M54 73c5 4 11 4 16 0" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
           </svg>
+          <div class="halloween-deco" aria-hidden="true">
+            <svg class="halloween-ghost" viewBox="0 0 64 64"><use href="#duoduo-ghost"></use></svg>
+            <svg class="halloween-candy" viewBox="0 0 64 64"><use href="#duoduo-candy"></use></svg>
+          </div>
         </section>
 
         <div class="quick-actions" aria-label="快捷记账">
@@ -263,6 +293,21 @@
         </section>
 
         <section class="settings-group">
+          <h2>外观</h2>
+          <label class="theme-setting">
+            <span>
+              <strong>节日主题</strong>
+              <small>10 月 1 日至 11 月 2 日自动启用万圣节</small>
+            </span>
+            <select id="themeInput">
+              <option value="auto">跟随日期</option>
+              <option value="daily">日常主题</option>
+              <option value="halloween">万圣节主题</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="settings-group">
           <h2>共享账本</h2>
           <div id="cloudPanel" class="cloud-panel">
             <div class="cloud-loading">正在读取共享状态</div>
@@ -301,7 +346,7 @@
               </svg>
             </div>
             <div>
-              <strong>多多钱包 <span>v1.1.0</span></strong>
+              <strong>多多钱包 <span>v1.4.0</span></strong>
               <p>私密账单只有自己能看到；与佳嘉记账配对后，可以只读查看双方允许的内容。</p>
             </div>
           </div>

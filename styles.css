@@ -132,6 +132,7 @@ svg {
 }
 
 .brand-mark {
+  position: relative;
   display: grid;
   flex: 0 0 auto;
   width: 46px;
@@ -143,6 +144,10 @@ svg {
   background: var(--primary);
   box-shadow: 0 4px 0 rgba(79, 110, 247, .14);
   transform: rotate(-2deg);
+}
+
+.brand-hat-band {
+  display: none;
 }
 
 .brand-mark img {
@@ -390,6 +395,10 @@ main {
   transform: rotate(-5deg);
 }
 
+.halloween-deco {
+  display: none;
+}
+
 .quick-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -477,6 +486,47 @@ main {
   color: var(--text);
   font-weight: 740;
   line-height: 1.25;
+}
+
+.theme-setting {
+  display: grid;
+  min-height: 66px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.theme-setting > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.theme-setting strong {
+  font-size: 13px;
+}
+
+.theme-setting small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-setting select {
+  min-height: 38px;
+  max-width: 122px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
 }
 
 .section-heading h2 {
@@ -1999,6 +2049,274 @@ main {
   .toast {
     background: #f7f1f9;
     color: #211d28;
+  }
+}
+
+:root[data-theme="halloween"] {
+  color-scheme: light;
+  --primary: #b84b1b;
+  --primary-dark: #913714;
+  --primary-soft: #ffe7d6;
+  --pink: #d46699;
+  --pink-deep: #934667;
+  --pink-soft: #ffe8f1;
+  --mint: #4dae91;
+  --mint-soft: #e5f7f0;
+  --yellow: #f2a93b;
+  --yellow-soft: #fff0c7;
+  --danger: #b83246;
+  --danger-soft: #ffe3e8;
+  --bg: #fff3e6;
+  --surface: #fffaf4;
+  --surface-2: #fff0df;
+  --text: #362638;
+  --muted: #7d687d;
+  --line: #e8cdb8;
+  --line-strong: #d8b59a;
+  --shadow: 0 14px 40px rgba(92, 44, 18, .13);
+}
+
+html[data-theme="halloween"] body {
+  background:
+    linear-gradient(180deg, rgba(184, 75, 27, .065), transparent 280px),
+    var(--bg);
+}
+
+html[data-theme="halloween"] .topbar {
+  border-bottom-color: color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+html[data-theme="halloween"] .brand-mark {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--line));
+  background: var(--primary);
+  box-shadow: 0 4px 0 rgba(105, 45, 20, .18);
+}
+
+html[data-theme="halloween"] .brand-mark::before {
+  position: absolute;
+  z-index: 3;
+  top: -15px;
+  left: 10px;
+  width: 25px;
+  height: 22px;
+  background: #211a24;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  content: "";
+  transform: rotate(-8deg);
+}
+
+html[data-theme="halloween"] .brand-mark::after {
+  position: absolute;
+  z-index: 4;
+  top: 3px;
+  left: 5px;
+  width: 35px;
+  height: 5px;
+  border-radius: 5px;
+  background: #211a24;
+  content: "";
+  transform: rotate(-8deg);
+}
+
+html[data-theme="halloween"] .brand-mark > svg {
+  position: relative;
+  z-index: 2;
+  margin-top: 6px;
+}
+
+html[data-theme="halloween"] .brand-hat-band {
+  position: absolute;
+  z-index: 5;
+  top: -1px;
+  left: 16px;
+  display: block;
+  width: 17px;
+  height: 4px;
+  border-radius: 3px;
+  background: #f28a3c;
+  box-shadow: 0 1px 0 rgba(74, 34, 18, .2);
+  transform: rotate(-8deg);
+}
+
+html[data-theme="halloween"] .balance-hero {
+  border-color: color-mix(in srgb, var(--primary) 70%, #6e2a15);
+  background: var(--primary);
+  box-shadow: 0 18px 38px rgba(118, 48, 19, .26);
+}
+
+html[data-theme="halloween"] .hero-mascot {
+  display: none;
+}
+
+html[data-theme="halloween"] .halloween-deco {
+  position: absolute;
+  z-index: 1;
+  top: 72px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: .72;
+  pointer-events: none;
+}
+
+html[data-theme="halloween"] .halloween-ghost {
+  width: 48px;
+  height: 48px;
+  filter: drop-shadow(0 4px 4px rgba(67, 30, 18, .2));
+}
+
+html[data-theme="halloween"] .halloween-candy {
+  width: 31px;
+  height: 31px;
+  filter: drop-shadow(0 3px 3px rgba(67, 30, 18, .18));
+}
+
+html[data-theme="halloween"] .quick-action,
+html[data-theme="halloween"] .bill-row,
+html[data-theme="halloween"] .search-field,
+html[data-theme="halloween"] .stats-overview,
+html[data-theme="halloween"] .trend-chart,
+html[data-theme="halloween"] .settings-action,
+html[data-theme="halloween"] .about-card {
+  border-top-color: color-mix(in srgb, var(--primary) 60%, var(--line));
+}
+
+html[data-theme="halloween"] .quick-action {
+  box-shadow: 0 4px 0 rgba(111, 51, 25, .08);
+}
+
+html[data-theme="halloween"] .mode-banner {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--line));
+  background: var(--primary-soft);
+}
+
+html[data-theme="halloween"] .hero-arrow {
+  background: rgba(255, 247, 232, .17);
+}
+
+html[data-theme="halloween"] .hero-grid > div {
+  border-color: rgba(255, 244, 226, .25);
+  background: rgba(255, 247, 232, .12);
+}
+
+html[data-theme="halloween"] .add-button {
+  box-shadow: 0 7px 18px rgba(128, 51, 18, .32);
+}
+
+html[data-theme="halloween"] .save-button {
+  box-shadow: 0 5px 0 rgba(128, 51, 18, .18);
+}
+
+html[data-theme="halloween"] .toast {
+  background: #2b1a34;
+  color: #fff5e8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="halloween"] {
+    color-scheme: dark;
+    --primary: #ff9d57;
+    --primary-dark: #df7940;
+    --primary-soft: #4a2b2b;
+    --pink: #ff9fc4;
+    --pink-deep: #ffbed8;
+    --pink-soft: #432737;
+    --mint: #8cdec4;
+    --mint-soft: #183832;
+    --yellow: #ffd979;
+    --yellow-soft: #493b22;
+    --danger: #ff8493;
+    --danger-soft: #45232a;
+    --bg: #17111f;
+    --surface: #241a2d;
+    --surface-2: #30213a;
+    --text: #fff5e8;
+    --muted: #c9b7c7;
+    --line: #5b405c;
+    --line-strong: #74516f;
+    --shadow: 0 14px 40px rgba(0, 0, 0, .28);
+  }
+
+  html[data-theme="halloween"] body {
+    background:
+      linear-gradient(180deg, rgba(255, 157, 87, .05), transparent 280px),
+      var(--bg);
+  }
+
+  html[data-theme="halloween"] .balance-hero {
+    color: #271725;
+    box-shadow: 0 18px 38px rgba(0, 0, 0, .3);
+  }
+
+  html[data-theme="halloween"] .hero-amount,
+  html[data-theme="halloween"] .hero-month strong {
+    color: #271725;
+  }
+
+  html[data-theme="halloween"] .balance-hero .eyebrow,
+  html[data-theme="halloween"] .balance-hero .hero-grid span {
+    color: rgba(39, 23, 37, .68);
+  }
+
+  html[data-theme="halloween"] .hero-arrow,
+  html[data-theme="halloween"] .hero-grid > div {
+    border-color: rgba(39, 23, 37, .14);
+    background: rgba(255, 249, 240, .19);
+  }
+
+  html[data-theme="halloween"] .hero-grid strong.is-negative {
+    color: #8c2434;
+  }
+
+  html[data-theme="halloween"] .toast {
+    background: #fff5e8;
+    color: #241a2d;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-theme="halloween"] .halloween-ghost {
+    animation: halloween-ghost-drift 3.6s ease-in-out infinite;
+  }
+
+  html[data-theme="halloween"] .halloween-candy {
+    animation: halloween-candy-tilt 3s ease-in-out infinite;
+  }
+}
+
+@keyframes halloween-ghost-drift {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-4px) rotate(3deg); }
+}
+
+@keyframes halloween-candy-tilt {
+  0%, 100% { transform: rotate(8deg); }
+  50% { transform: rotate(-6deg); }
+}
+
+@media (max-width: 370px) {
+  html[data-theme="halloween"] .halloween-deco {
+    right: 10px;
+  }
+
+  html[data-theme="halloween"] .halloween-ghost {
+    width: 40px;
+    height: 40px;
+  }
+
+  html[data-theme="halloween"] .halloween-candy {
+    width: 27px;
+    height: 27px;
+  }
+
+  .theme-setting {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-setting select {
+    width: 100%;
+    max-width: none;
   }
 }
 

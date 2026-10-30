@@ -7,6 +7,7 @@
   const APP_VERSION = 2;
   const CLOUD_CACHE_KEY = "duoduo-visible-transactions-v1";
   const PROFILE_CACHE_KEY = "duoduo-cloud-profile-v1";
+  const THEME_KEY = "duoduo-wallet-theme-v1";
 
   const EXPENSE_CATEGORIES = [
     { id: "exp-food", name: "餐饮", mark: "餐", color: "#ff8fba", soft: "#fff0f6", ink: "#b75c83" },
@@ -73,6 +74,7 @@
 
   async function init() {
     cacheElements();
+    applyTheme();
     bindEvents();
     setInitialView();
     renderMonthLabels();
@@ -128,7 +130,7 @@
       "sheetTitle", "transactionForm", "typeSwitch", "amountInput", "categoryGrid",
       "accountChips", "dateInput", "noteInput", "deleteButton", "saveButton", "toast",
       "cloudPanel", "ledgerModeLabel", "syncModeLabel", "readonlyBanner",
-      "visibilitySection", "visibilitySwitch", "editSheet", "modeBanner"
+      "visibilitySection", "visibilitySwitch", "editSheet", "modeBanner", "themeInput"
     ].forEach((id) => {
       elements[id] = document.getElementById(id);
     });
@@ -206,6 +208,11 @@
       renderLedger();
     });
 
+    elements.themeInput.addEventListener("change", () => {
+      localStorage.setItem(THEME_KEY, elements.themeInput.value);
+      applyTheme(elements.themeInput.value);
+    });
+
     elements.ownerFilter.addEventListener("click", (event) => {
       const button = event.target.closest("[data-owner-filter]");
       if (!button) return;
@@ -225,6 +232,7 @@
       if (event.key === "Escape" && !elements.sheetLayer.hidden) closeSheet();
     });
     window.addEventListener("hashchange", setInitialView);
+    window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme());
     window.addEventListener("focus", () => {
       if (state.mode === "cloud") {
         refreshCloudProfile(false);
@@ -573,6 +581,7 @@
       ? (state.cloudOffline ? "离线缓存" : "自动同步")
       : "离线可用";
     elements.recordSummary.textContent = `${state.transactions.length} 笔可见账单`;
+    elements.themeInput.value = readThemePreference();
     renderCloudPanel();
     if (cloud) {
       elements.storageSummary.textContent = state.cloudOffline
@@ -581,6 +590,28 @@
     } else {
       updateStorageSummary();
     }
+  }
+
+  function readThemePreference() {
+    const value = localStorage.getItem(THEME_KEY) || "auto";
+    return ["auto", "daily", "halloween"].includes(value) ? value : "auto";
+  }
+
+  function isHalloweenSeason(date = new Date()) {
+    const month = date.getMonth();
+    return month === 9 || (month === 10 && date.getDate() <= 2);
+  }
+
+  function applyTheme(preference = readThemePreference()) {
+    const active = preference === "halloween" || (preference === "auto" && isHalloweenSeason());
+    document.documentElement.dataset.theme = active ? "halloween" : "daily";
+    const dark = Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+    const lightColor = active ? "#fff3e6" : "#4F6EF7";
+    const darkColor = active ? "#17111f" : "#15131b";
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.content = meta.media.includes("dark") ? darkColor : lightColor;
+    });
+    if (elements.themeInput) elements.themeInput.value = preference;
   }
 
   async function updateStorageSummary() {
