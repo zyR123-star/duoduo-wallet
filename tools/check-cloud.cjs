@@ -7,6 +7,7 @@ const base = "http://127.0.0.1:4180/";
 const mockOrigin = "https://mock.supabase.test";
 const ownerId = "11111111-1111-1111-1111-111111111111";
 const partnerId = "22222222-2222-2222-2222-222222222222";
+const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, prefer",
@@ -68,7 +69,7 @@ async function main() {
       amount: 8800,
       category_id: "exp-study",
       account: "微信",
-      date: "2026-10-17",
+      date: today,
       note: "自己的网课",
       visibility: "private",
       created_at: "2026-10-17T01:00:00.000Z",
@@ -81,7 +82,7 @@ async function main() {
       amount: 2600,
       category_id: "exp-food",
       account: "支付宝",
-      date: "2026-10-17",
+      date: today,
       note: "一起吃的面",
       visibility: "partner",
       created_at: "2026-10-17T02:00:00.000Z",
@@ -94,7 +95,7 @@ async function main() {
       amount: 1500,
       category_id: "exp-food",
       account: "微信",
-      date: "2026-10-16",
+      date: today,
       note: "她的奶茶",
       visibility: "partner",
       created_at: "2026-10-16T03:00:00.000Z",
@@ -168,6 +169,16 @@ async function main() {
     assert((await page.locator("#recentList").textContent()).includes("她的奶茶"), "对方共享账单不可见");
     assert((await page.locator("#recentList").textContent()).includes("对方可见"), "共享范围标记缺失");
 
+    await page.click('.tab[data-view="stats"]');
+    assert(await page.locator("#statsScopeFilter").isVisible(), "共享账本缺少统计范围切换");
+    assert(await text(page, "#statsTotal") === "114.00", "统计页“我的”支出口径不正确");
+    assert(await text(page, "#statsScopeLabel") === "我的支出", "统计页个人范围标签不正确");
+    await page.click('[data-stats-scope="both"]');
+    assert(await text(page, "#statsTotal") === "129.00", "统计页“双方”支出没有包含对方共享账单");
+    assert(await text(page, "#statsScopeLabel") === "双方支出", "统计页双方范围标签不正确");
+    await page.click('[data-stats-scope="mine"]');
+    await page.click('.tab[data-view="home"]');
+
     await page.click('.tab[data-view="ledger"]');
     assert(await page.locator("#ownerFilter").isVisible(), "共享账本缺少账单来源筛选");
     await page.click('[data-owner-filter="partner"]');
@@ -189,7 +200,7 @@ async function main() {
     await page.fill("#amountInput", "12.50");
     await page.click('[data-category="exp-fun"]');
     await page.click('[data-visibility="partner"]');
-    await page.fill("#dateInput", "2026-10-17");
+    await page.fill("#dateInput", today);
     await page.fill("#noteInput", "电影票");
     await page.click("#saveButton");
     await page.waitForFunction(() => document.querySelector("#sheetLayer").hidden);

@@ -850,6 +850,10 @@ main {
   box-shadow: var(--shadow);
 }
 
+.stats-scope-filter {
+  margin: -6px 0 14px;
+}
+
 .stats-donut {
   position: relative;
   display: grid;

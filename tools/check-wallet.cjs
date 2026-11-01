@@ -79,6 +79,7 @@ async function main() {
     await page.click('.tab[data-view="stats"]');
     assert(await text(page, "#statsTotal") === "30.50", "统计支出总额不正确");
     assert((await text(page, "#categoryRank")).includes("餐饮"), "分类统计中缺少餐饮");
+    assert(await page.locator("#statsScopeFilter").isHidden(), "本机账本不应显示双方统计切换");
     await page.waitForTimeout(2500);
     await page.screenshot({ path: path.join(shots, "stats-light.png"), fullPage: true });
 

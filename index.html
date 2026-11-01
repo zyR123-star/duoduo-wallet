@@ -233,10 +233,15 @@
           </div>
         </div>
 
+        <div class="segmented stats-scope-filter" id="statsScopeFilter" aria-label="统计范围" hidden>
+          <button class="is-on" type="button" data-stats-scope="mine">我的</button>
+          <button type="button" data-stats-scope="both">双方</button>
+        </div>
+
         <section class="stats-overview">
           <div class="stats-donut" id="statsDonut">
             <div class="stats-donut-center">
-              <span>支出</span>
+              <span id="statsScopeLabel">我的支出</span>
               <strong id="statsTotal">¥0</strong>
             </div>
           </div>
@@ -346,7 +351,7 @@
               </svg>
             </div>
             <div>
-              <strong>多多钱包 <span>v1.4.0</span></strong>
+              <strong>多多钱包 <span>v1.4.1</span></strong>
               <p>私密账单只有自己能看到；与佳嘉记账配对后，可以只读查看双方允许的内容。</p>
             </div>
           </div>

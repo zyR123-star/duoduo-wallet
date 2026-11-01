@@ -44,6 +44,7 @@
     month: startOfMonth(new Date()),
     filter: "all",
     ownerFilter: "all",
+    statsScope: "mine",
     search: "",
     transactions: [],
     mode: "local",
@@ -126,6 +127,7 @@
       "statsDonut", "statsTotal", "statsIncome", "statsBalance", "categoryRank",
       "trendChart", "recordSummary", "storageSummary", "exportJsonButton",
       "importButton", "importInput", "exportCsvButton", "headerAddButton", "ownerFilter",
+      "statsScopeFilter", "statsScopeLabel",
       "tabAddButton", "sheetLayer", "sheetBackdrop", "sheetClose", "sheetEyebrow",
       "sheetTitle", "transactionForm", "typeSwitch", "amountInput", "categoryGrid",
       "accountChips", "dateInput", "noteInput", "deleteButton", "saveButton", "toast",
@@ -218,6 +220,13 @@
       if (!button) return;
       state.ownerFilter = button.dataset.ownerFilter;
       renderLedger();
+    });
+
+    elements.statsScopeFilter.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-stats-scope]");
+      if (!button) return;
+      state.statsScope = button.dataset.statsScope;
+      renderStats();
     });
 
     elements.recentList.addEventListener("click", editFromList);
@@ -492,7 +501,10 @@
   }
 
   function renderStats() {
-    const items = transactionsForMonth(state.month);
+    const monthItems = transactionsForMonth(state.month);
+    const items = state.statsScope === "mine"
+      ? monthItems.filter(isOwnTransaction)
+      : monthItems;
     const summary = summarize(items);
     const expenseItems = items.filter((item) => item.type === "expense");
     const grouped = new Map();
@@ -506,9 +518,14 @@
       .filter((item) => item.category)
       .sort((a, b) => b.amount - a.amount);
 
-      elements.statsTotal.textContent = formatCurrency(summary.expense, false);
+    elements.statsTotal.textContent = formatCurrency(summary.expense, false);
     elements.statsIncome.textContent = formatCurrency(summary.income);
     elements.statsBalance.textContent = formatCurrency(summary.balance);
+    elements.statsScopeFilter.hidden = state.mode !== "cloud";
+    elements.statsScopeFilter.querySelectorAll("[data-stats-scope]").forEach((button) => {
+      button.classList.toggle("is-on", button.dataset.statsScope === state.statsScope);
+    });
+    elements.statsScopeLabel.textContent = state.statsScope === "mine" ? "我的支出" : "双方支出";
 
     if (summary.expense > 0) {
       let cursor = 0;
